@@ -34,10 +34,12 @@ input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
 #Load stock model
-stock_model=load_model("models/stock_model.keras")
+stock_model=load_model("models/apple-stock-model.keras")
 
 # Load the historical data
-data = pd.read_csv('data/apple_stock.csv')
+apple_data = pd.read_csv("data/Apple.csv", index_col="Price Date", parse_dates=["Price Date"])
+apple_data['Modal Price (Rs./Quintal)'] = apple_data['Modal Price (Rs./Quintal)'].apply(lambda x: (x+9000)/100)
+
 # Sample fertilizer_links
 
 
@@ -138,7 +140,6 @@ def leaf_predict():
     else:
         return jsonify({'prediction': prediction, 'fertilizer': None})
 
-
 @app.route('/quality_predict',methods=['POST'])
 def qaulity_predict():
     # Get input values from the request
@@ -162,47 +163,41 @@ def qaulity_predict():
     else:
         return jsonify({'prediction': 'Bad'})
         
-
-
-
-
 @app.route('/predict_stock_price', methods=['POST'])
 def predict_stock_price():
     # Get the future date as user input
     future_date = request.json['future_date']
- 
+
     # Convert the future date to datetime format
     future_date = pd.to_datetime(future_date)
+
     # Scale the testing set
     scaler = MinMaxScaler()
+
     # Scale the last 60 days of data
-    if future_date in data.index:
+    if future_date in apple_data.index:
         # Find the index of the future_date in the dataset
-        idx = data.index.get_loc(future_date)
-        print("index",idx)
+        idx = apple_data.index.get_loc(future_date)
         # Select the last 60 records starting from the future_date
-        last_60_days_scaled = scaler.fit_transform(data[['Open', 'High', 'Low', 'Volume']].iloc[idx-59:idx+1])
+        last_60_days_scaled = scaler.fit_transform(apple_data[['Modal Price (Rs./Quintal)']].iloc[idx-59:idx+1])
     else:
         # Scale the last 60 days of data
-        last_60_days_scaled = scaler.fit_transform(data[['Open', 'High', 'Low', 'Volume']].tail(60))
+        last_60_days_scaled = scaler.fit_transform(apple_data[['Modal Price (Rs./Quintal)']].tail(60))
 
     # Reshape the last 60 days of data
-    X_test = np.array(last_60_days_scaled).reshape(60, 1, 4)
+    X_test = np.array(last_60_days_scaled).reshape(60, 1)
 
     # Predict the stock price for the future date
     y_pred = stock_model.predict(X_test)
 
-    print("Predicted Stock Price is: ${:.2f}".format(y_pred[0][0]))
-    # Get the predicted stock price for the future date
-    # predicted_price = y_pred[0][0]
-
+    # Inverse transform the predicted price
+    predicted_price = scaler.inverse_transform(y_pred)
+    print(predicted_price)
     # Convert the predicted price to a serializable format (float)
     # predicted_price = float(predicted_price)
-
+    # print(predicted_price)
     # Return the predicted stock price as a response
-    print(y_pred)
-    return jsonify({'prediction':  y_pred.flatten().tolist()})
-
+    return jsonify({'prediction':  predicted_price.flatten().tolist()})
 
 # Home route
 @app.route('/')
